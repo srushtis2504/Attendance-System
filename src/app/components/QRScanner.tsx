@@ -1,6 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { ScanLine, CheckCircle2, XCircle, AlertCircle, ArrowLeft, Clock } from "lucide-react";
+import { Html5QrcodeScanner } from "html5-qrcode";
 
 type ScanStatus = "scanning" | "success" | "expired" | "invalid" | null;
 
@@ -8,24 +9,51 @@ export function QRScanner() {
   const navigate = useNavigate();
   const [scanStatus, setScanStatus] = useState<ScanStatus>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
 
   useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    if (isScanning) {
-      setScanStatus("scanning");
-      timeout = setTimeout(() => {
-        const outcomes: ScanStatus[] = ["success", "expired", "invalid"];
-        const randomOutcome = outcomes[Math.floor(Math.random() * outcomes.length)];
-        setScanStatus(randomOutcome);
-        setIsScanning(false);
-      }, 2000);
+    if (isScanning && !scannerRef.current) {
+      const scanner = new Html5QrcodeScanner(
+        "reader",
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        /* verbose= */ false
+      );
+
+      scanner.render(
+        (decodedText) => {
+          // Success callback
+          console.log("Scan result:", decodedText);
+          if (decodedText.startsWith("QR_")) {
+            setScanStatus("success");
+            setIsScanning(false);
+            if (scannerRef.current) {
+              scannerRef.current.clear().catch(error => console.error("Failed to clear scanner", error));
+              scannerRef.current = null;
+            }
+          } else {
+            setScanStatus("invalid");
+          }
+        },
+        (errorMessage) => {
+          // Error callback (optional, can be noisy)
+          // console.warn("Scan error:", errorMessage);
+        }
+      );
+
+      scannerRef.current = scanner;
     }
-    return () => clearTimeout(timeout);
+
+    return () => {
+      if (scannerRef.current) {
+        scannerRef.current.clear().catch(error => console.error("Failed to clear scanner on unmount", error));
+        scannerRef.current = null;
+      }
+    };
   }, [isScanning]);
 
   const handleScan = () => {
     setIsScanning(true);
-    setScanStatus(null);
+    setScanStatus("scanning");
   };
 
   const handleBack = () => {
@@ -86,44 +114,40 @@ export function QRScanner() {
       {/* Scanner Interface */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-shadow duration-500 animate-slide-up">
         {/* Camera View */}
-        <div className="relative bg-gradient-to-br from-gray-900 to-gray-800 aspect-square md:aspect-video flex items-center justify-center">
-          {/* Simulated Camera Feed */}
-          <div className="absolute inset-0 bg-gradient-to-br from-gray-800/50 to-gray-900/50" />
+        <div className="relative bg-black aspect-square md:aspect-video flex items-center justify-center">
+          {!isScanning && scanStatus !== "success" && (
+            <div className="absolute inset-0 bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center z-20">
+               <div className="relative z-10 w-64 h-64 md:w-80 md:h-80 transition-all duration-500 hover:scale-105">
+                <div className="absolute inset-0 border-2 border-white/30 rounded-2xl transition-all duration-300" />
+                {/* Corner Markers */}
+                <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-2xl animate-pulse" />
+                <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-2xl animate-pulse" style={{ animationDelay: '0.2s' }} />
+                <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-2xl animate-pulse" style={{ animationDelay: '0.4s' }} />
+                <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-2xl animate-pulse" style={{ animationDelay: '0.6s' }} />
 
-          {/* Scanning Frame */}
-          <div className="relative z-10 w-64 h-64 md:w-80 md:h-80 transition-all duration-500 hover:scale-105">
-            <div className="absolute inset-0 border-2 border-white/30 rounded-2xl transition-all duration-300" />
-            {/* Corner Markers */}
-            <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-2xl animate-pulse" />
-            <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-2xl animate-pulse" style={{ animationDelay: '0.2s' }} />
-            <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-2xl animate-pulse" style={{ animationDelay: '0.4s' }} />
-            <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-primary rounded-br-2xl animate-pulse" style={{ animationDelay: '0.6s' }} />
-
-            {/* Scanning Line Animation */}
-            {scanStatus === "scanning" && (
-              <div
-                className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse"
-                style={{
-                  top: "50%",
-                  animation: "scan 2s ease-in-out infinite",
-                }}
-              />
-            )}
-
-            {/* Center Icon */}
-            {!scanStatus && (
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6">
-                  <ScanLine className="h-12 w-12 text-white" />
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-6">
+                    <ScanLine className="h-12 w-12 text-white" />
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+            </div>
+          )}
+          
+          <div id="reader" className="w-full h-full"></div>
 
-          {/* Scan Instructions */}
-          {!scanStatus && (
-            <div className="absolute bottom-8 left-0 right-0 text-center">
-              <p className="text-white/80 text-sm">Position QR code within the frame</p>
+          {/* Scanning Line Animation overlay for when scanning is active */}
+          {isScanning && (
+            <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
+               <div className="w-64 h-64 md:w-80 md:h-80 border-2 border-primary/30 rounded-2xl relative overflow-hidden">
+                  <div
+                    className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-primary to-transparent animate-pulse"
+                    style={{
+                      top: "50%",
+                      animation: "scan 2s ease-in-out infinite",
+                    }}
+                  />
+               </div>
             </div>
           )}
         </div>
@@ -204,6 +228,19 @@ export function QRScanner() {
         @keyframes scan {
           0%, 100% { top: 10%; }
           50% { top: 90%; }
+        }
+        #reader {
+          width: 100% !important;
+          border: none !important;
+        }
+        #reader video {
+          width: 100% !important;
+          height: 100% !important;
+          object-fit: cover !important;
+          border-radius: 1rem;
+        }
+        #reader__dashboard {
+          display: none !important;
         }
       `}</style>
     </div>

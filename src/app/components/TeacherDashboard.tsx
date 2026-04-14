@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Plus, QrCode, Timer, Users, CheckCircle2, XCircle, Download } from "lucide-react";
+import { QRCodeCanvas } from "qrcode.react";
 
 export function TeacherDashboard() {
   const [activeSession, setActiveSession] = useState<{
@@ -244,17 +245,13 @@ export function TeacherDashboard() {
 
               <div className="flex items-center justify-center relative z-10">
                 <div className="bg-white p-8 rounded-2xl shadow-lg hover:shadow-2xl hover:scale-105 transition-all duration-500 animate-float animate-glow">
-                  <div className="w-64 h-64 bg-gray-100 rounded-xl flex items-center justify-center border-4 border-primary/20">
-                    <div className="grid grid-cols-8 gap-1 p-4">
-                      {Array.from({ length: 64 }).map((_, i) => (
-                        <div
-                          key={i}
-                          className={`w-3 h-3 ${
-                            Math.random() > 0.5 ? "bg-black" : "bg-white"
-                          } rounded-sm`}
-                        />
-                      ))}
-                    </div>
+                  <div className="bg-gray-100 rounded-xl flex items-center justify-center border-4 border-primary/20 p-4">
+                    <QRCodeCanvas
+                      value={activeSession.qrCode}
+                      size={200}
+                      level={"H"}
+                      includeMargin={false}
+                    />
                   </div>
                   <p className="text-center text-xs text-gray-500 mt-4 font-mono">
                     {activeSession.qrCode}
