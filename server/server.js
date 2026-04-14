@@ -35,7 +35,7 @@ app.post('/api/register', async (req, res) => {
 });
 
 app.post('/api/login', async (req, res) => {
-  const { role, email, password } = req.body;
+  const { role, email, password, name, roll_no } = req.body;
 
   try {
     if (role === 'teacher') {
@@ -44,7 +44,7 @@ app.post('/api/login', async (req, res) => {
         return res.json({ success: true, role: 'teacher', user: rows[0] });
       }
     } else if (role === 'student') {
-      const [rows] = await db.query('SELECT * FROM Students WHERE email = ? AND password = ?', [email, password]);
+      const [rows] = await db.query('SELECT * FROM Students WHERE name = ? AND roll_no = ? AND password = ?', [name, roll_no, password]);
       if (rows.length > 0) {
         return res.json({ success: true, role: 'student', user: rows[0] });
       }
