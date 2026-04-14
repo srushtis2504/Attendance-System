@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router";
 import { ScanLine, CheckCircle2, XCircle, AlertCircle, ArrowLeft, Clock } from "lucide-react";
-import { Html5QrcodeScanner } from "html5-qrcode";
+import { Html5Qrcode } from "html5-qrcode";
 
 type ScanStatus = "scanning" | "success" | "expired" | "invalid" | null;
 
@@ -9,45 +9,54 @@ export function QRScanner() {
   const navigate = useNavigate();
   const [scanStatus, setScanStatus] = useState<ScanStatus>(null);
   const [isScanning, setIsScanning] = useState(false);
-  const scannerRef = useRef<Html5QrcodeScanner | null>(null);
+  const scannerRef = useRef<Html5Qrcode | null>(null);
 
   useEffect(() => {
-    if (isScanning && !scannerRef.current) {
-      const scanner = new Html5QrcodeScanner(
-        "reader",
-        { fps: 10, qrbox: { width: 250, height: 250 } },
-        /* verbose= */ false
-      );
+    // Clean up function to stop scanner
+    const stopScanner = async () => {
+      if (scannerRef.current && scannerRef.current.isScanning) {
+        try {
+          await scannerRef.current.stop();
+          scannerRef.current = null;
+          console.log("Scanner stopped");
+        } catch (err) {
+          console.error("Failed to stop scanner", err);
+        }
+      }
+    };
 
-      scanner.render(
+    if (isScanning) {
+      const html5QrCode = new Html5Qrcode("reader");
+      scannerRef.current = html5QrCode;
+
+      const config = { fps: 10, qrbox: { width: 250, height: 250 } };
+
+      html5QrCode.start(
+        { facingMode: "environment" },
+        config,
         (decodedText) => {
           // Success callback
           console.log("Scan result:", decodedText);
           if (decodedText.startsWith("QR_")) {
             setScanStatus("success");
             setIsScanning(false);
-            if (scannerRef.current) {
-              scannerRef.current.clear().catch(error => console.error("Failed to clear scanner", error));
-              scannerRef.current = null;
-            }
+            html5QrCode.stop().catch(err => console.error("Error stopping scanner after success", err));
           } else {
             setScanStatus("invalid");
           }
         },
         (errorMessage) => {
-          // Error callback (optional, can be noisy)
-          // console.warn("Scan error:", errorMessage);
+          // Scanning error callback (too frequent to log)
         }
-      );
-
-      scannerRef.current = scanner;
+      ).catch(err => {
+        console.error("Unable to start scanning", err);
+        setScanStatus("invalid");
+        setIsScanning(false);
+      });
     }
 
     return () => {
-      if (scannerRef.current) {
-        scannerRef.current.clear().catch(error => console.error("Failed to clear scanner on unmount", error));
-        scannerRef.current = null;
-      }
+      stopScanner();
     };
   }, [isScanning]);
 
@@ -114,7 +123,7 @@ export function QRScanner() {
       {/* Scanner Interface */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-shadow duration-500 animate-slide-up">
         {/* Camera View */}
-        <div className="relative bg-black aspect-square md:aspect-video flex items-center justify-center">
+        <div className="relative bg-black aspect-square md:aspect-video flex items-center justify-center overflow-hidden">
           {!isScanning && scanStatus !== "success" && (
             <div className="absolute inset-0 bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center z-20">
                <div className="relative z-10 w-64 h-64 md:w-80 md:h-80 transition-all duration-500 hover:scale-105">
@@ -232,15 +241,12 @@ export function QRScanner() {
         #reader {
           width: 100% !important;
           border: none !important;
+          background: black;
         }
         #reader video {
           width: 100% !important;
           height: 100% !important;
           object-fit: cover !important;
-          border-radius: 1rem;
-        }
-        #reader__dashboard {
-          display: none !important;
         }
       `}</style>
     </div>
