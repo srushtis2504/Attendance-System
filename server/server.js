@@ -154,6 +154,49 @@ app.get('/api/teacher/:teacherId/courses', async (req, res) => {
   }
 });
 
+// 6. Get all students enrolled in a course with their attendance status for today
+app.get('/api/courses/:courseId/enrolled', async (req, res) => {
+  const { courseId } = req.params;
+  const date = new Date().toISOString().split('T')[0];
+  try {
+    const [rows] = await db.query(
+      `SELECT s.student_id, s.name, s.roll_no, 
+       (SELECT COUNT(*) FROM Attendance a WHERE a.student_id = s.student_id AND a.course_id = e.course_id AND a.date = ?) as is_present
+       FROM Enrollments e
+       JOIN Students s ON e.student_id = s.student_id
+       WHERE e.course_id = ?`,
+      [date, courseId]
+    );
+    res.json({ success: true, students: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 7. Mark all enrolled students as present
+app.post('/api/attendance/mark-all', async (req, res) => {
+  const { course_id } = req.body;
+  const date = new Date().toISOString().split('T')[0];
+  try {
+    const [enrolled] = await db.query('SELECT student_id FROM Enrollments WHERE course_id = ?', [course_id]);
+    for (const student of enrolled) {
+      const [existing] = await db.query(
+        'SELECT * FROM Attendance WHERE student_id = ? AND course_id = ? AND date = ?',
+        [student.student_id, course_id, date]
+      );
+      if (existing.length === 0) {
+        await db.query(
+          'INSERT INTO Attendance (student_id, course_id, date, status) VALUES (?, ?, ?, ?)',
+          [student.student_id, course_id, date, 'Present']
+        );
+      }
+    }
+    res.json({ success: true, message: 'All students marked as present' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
