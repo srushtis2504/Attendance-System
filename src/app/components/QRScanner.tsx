@@ -3,22 +3,23 @@ import { useNavigate } from "react-router";
 import { ScanLine, CheckCircle2, XCircle, AlertCircle, ArrowLeft, Clock } from "lucide-react";
 import { Html5Qrcode } from "html5-qrcode";
 
-type ScanStatus = "scanning" | "success" | "expired" | "invalid" | null;
+type ScanStatus = "scanning" | "success" | "expired" | "invalid" | "already_marked" | null;
 
 export function QRScanner() {
   const navigate = useNavigate();
   const [scanStatus, setScanStatus] = useState<ScanStatus>(null);
   const [isScanning, setIsScanning] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
   const scannerRef = useRef<Html5Qrcode | null>(null);
 
+  const user = JSON.parse(localStorage.getItem("user") || "{}");
+
   useEffect(() => {
-    // Clean up function to stop scanner
     const stopScanner = async () => {
       if (scannerRef.current && scannerRef.current.isScanning) {
         try {
           await scannerRef.current.stop();
           scannerRef.current = null;
-          console.log("Scanner stopped");
         } catch (err) {
           console.error("Failed to stop scanner", err);
         }
@@ -34,22 +35,20 @@ export function QRScanner() {
       html5QrCode.start(
         { facingMode: "environment" },
         config,
-        (decodedText) => {
-          // Success callback
+        async (decodedText) => {
           console.log("Scan result:", decodedText);
-          if (decodedText.startsWith("QR_")) {
-            setScanStatus("success");
+          if (decodedText.startsWith("ATTEND_")) {
+            const courseId = decodedText.split("_")[1];
+            await markAttendance(courseId);
             setIsScanning(false);
-            html5QrCode.stop().catch(err => console.error("Error stopping scanner after success", err));
+            html5QrCode.stop().catch(err => console.error(err));
           } else {
             setScanStatus("invalid");
           }
         },
-        (errorMessage) => {
-          // Scanning error callback (too frequent to log)
-        }
+        () => {}
       ).catch(err => {
-        console.error("Unable to start scanning", err);
+        console.error(err);
         setScanStatus("invalid");
         setIsScanning(false);
       });
@@ -59,6 +58,35 @@ export function QRScanner() {
       stopScanner();
     };
   }, [isScanning]);
+
+  const markAttendance = async (courseId: string) => {
+    try {
+      const response = await fetch("https://bust-glance-statute.ngrok-free.dev/api/attendance", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_id: user.student_id,
+          course_id: courseId,
+          status: "Present"
+        }),
+      });
+
+      const data = await response.json();
+      if (data.success) {
+        setScanStatus("success");
+      } else {
+        if (data.message.includes("already marked")) {
+          setScanStatus("already_marked");
+        } else {
+          setScanStatus("invalid");
+          setErrorMessage(data.message);
+        }
+      }
+    } catch (err) {
+      setScanStatus("invalid");
+      setErrorMessage("Connection failed");
+    }
+  };
 
   const handleScan = () => {
     setIsScanning(true);
@@ -84,6 +112,13 @@ export function QRScanner() {
       color: "text-primary",
       bg: "bg-primary/10",
     },
+    already_marked: {
+      icon: AlertCircle,
+      title: "Already Marked",
+      message: "Your attendance is already recorded for today",
+      color: "text-warning",
+      bg: "bg-warning/10",
+    },
     expired: {
       icon: AlertCircle,
       title: "QR Code Expired",
@@ -94,7 +129,7 @@ export function QRScanner() {
     invalid: {
       icon: XCircle,
       title: "Invalid QR Code",
-      message: "This QR code is not recognized",
+      message: errorMessage || "This QR code is not recognized",
       color: "text-destructive",
       bg: "bg-destructive/10",
     },
@@ -102,9 +137,7 @@ export function QRScanner() {
 
   return (
     <div className="max-w-2xl mx-auto pb-20 md:pb-8 relative">
-      {/* Animated Background */}
       <div className="absolute top-0 right-0 w-96 h-96 bg-primary/5 rounded-full blur-3xl animate-pulse-slow -z-10" />
-      <div className="absolute bottom-0 left-0 w-72 h-72 bg-blue-500/5 rounded-full blur-3xl animate-pulse-slow -z-10" style={{ animationDelay: '2s' }} />
       <button
         onClick={handleBack}
         className="flex items-center gap-2 text-muted-foreground hover:text-foreground mb-6 transition-all duration-300 hover:scale-105 hover:-translate-x-1"
@@ -120,15 +153,12 @@ export function QRScanner() {
         <p className="text-muted-foreground">Scan the QR code to mark your attendance</p>
       </div>
 
-      {/* Scanner Interface */}
       <div className="bg-card border border-border rounded-2xl overflow-hidden shadow-xl hover:shadow-2xl transition-shadow duration-500 animate-slide-up">
-        {/* Camera View */}
         <div className="relative bg-black aspect-square md:aspect-video flex items-center justify-center overflow-hidden">
-          {!isScanning && scanStatus !== "success" && (
+          {!isScanning && scanStatus !== "success" && scanStatus !== "already_marked" && (
             <div className="absolute inset-0 bg-gradient-to-br from-gray-900 to-gray-800 flex items-center justify-center z-20">
                <div className="relative z-10 w-64 h-64 md:w-80 md:h-80 transition-all duration-500 hover:scale-105">
                 <div className="absolute inset-0 border-2 border-white/30 rounded-2xl transition-all duration-300" />
-                {/* Corner Markers */}
                 <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-primary rounded-tl-2xl animate-pulse" />
                 <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-primary rounded-tr-2xl animate-pulse" style={{ animationDelay: '0.2s' }} />
                 <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-primary rounded-bl-2xl animate-pulse" style={{ animationDelay: '0.4s' }} />
@@ -145,7 +175,6 @@ export function QRScanner() {
           
           <div id="reader" className="w-full h-full"></div>
 
-          {/* Scanning Line Animation overlay for when scanning is active */}
           {isScanning && (
             <div className="absolute inset-0 pointer-events-none z-10 flex items-center justify-center">
                <div className="w-64 h-64 md:w-80 md:h-80 border-2 border-primary/30 rounded-2xl relative overflow-hidden">
@@ -161,7 +190,6 @@ export function QRScanner() {
           )}
         </div>
 
-        {/* Status Message */}
         {scanStatus && scanStatus !== "scanning" && (
           <div className={`p-6 ${statusConfig[scanStatus].bg}`}>
             <div className="flex items-start gap-4">
@@ -186,20 +214,19 @@ export function QRScanner() {
           </div>
         )}
 
-        {/* Action Button */}
         <div className="p-6 bg-accent/30">
           <button
-            onClick={scanStatus === "success" ? handleBack : handleScan}
+            onClick={scanStatus === "success" || scanStatus === "already_marked" ? handleBack : handleScan}
             disabled={isScanning}
             className={`w-full py-3 rounded-xl font-medium transition-all duration-300 shadow-lg group relative overflow-hidden ripple-effect ${
-              scanStatus === "success"
+              scanStatus === "success" || scanStatus === "already_marked"
                 ? "bg-card text-foreground border border-border hover:shadow-xl"
                 : "bg-primary text-primary-foreground shadow-primary/20 hover:shadow-xl hover:shadow-primary/30"
             } ${isScanning ? "opacity-50 cursor-not-allowed" : "hover:scale-[1.02]"}`}
           >
             <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-700" />
             <span className="relative z-10">
-              {scanStatus === "success"
+              {scanStatus === "success" || scanStatus === "already_marked"
                 ? "Back to Dashboard"
                 : isScanning
                 ? "Scanning..."
@@ -208,28 +235,6 @@ export function QRScanner() {
                 : "Start Scanning"}
             </span>
           </button>
-        </div>
-      </div>
-
-      {/* Info Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
-        <div className="bg-card border border-border rounded-xl p-4 text-center hover:shadow-lg hover:scale-105 transition-all duration-300 animate-fade-in cursor-pointer">
-          <div className="inline-flex p-2 bg-primary/10 rounded-lg mb-2">
-            <CheckCircle2 className="h-5 w-5 text-primary" />
-          </div>
-          <p className="text-sm text-muted-foreground">Valid QR codes are generated by teachers</p>
-        </div>
-        <div className="bg-card border border-border rounded-xl p-4 text-center hover:shadow-lg hover:scale-105 transition-all duration-300 animate-fade-in cursor-pointer" style={{ animationDelay: '0.1s' }}>
-          <div className="inline-flex p-2 bg-warning/10 rounded-lg mb-2">
-            <Clock className="h-5 w-5 text-warning" />
-          </div>
-          <p className="text-sm text-muted-foreground">QR codes expire after session ends</p>
-        </div>
-        <div className="bg-card border border-border rounded-xl p-4 text-center hover:shadow-lg hover:scale-105 transition-all duration-300 animate-fade-in cursor-pointer" style={{ animationDelay: '0.2s' }}>
-          <div className="inline-flex p-2 bg-primary/10 rounded-lg mb-2">
-            <ScanLine className="h-5 w-5 text-primary" />
-          </div>
-          <p className="text-sm text-muted-foreground">Scan within the designated time frame</p>
         </div>
       </div>
 
