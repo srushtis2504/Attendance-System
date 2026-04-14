@@ -136,6 +136,28 @@ export function TeacherDashboard() {
     }
   };
 
+  const handleClearAttendance = async () => {
+    if (!activeSession) return;
+    if (!confirm('Are you sure you want to clear ALL attendance for today? Use this only for testing.')) return;
+    try {
+      const res = await fetch(`https://bust-glance-statute.ngrok-free.dev/api/attendance/clear-all`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          course_id: activeSession.courseId,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        fetchEnrolledStudents(activeSession.courseId);
+        fetchAttendance();
+      }
+    } catch (err) {
+      console.error('Failed to clear attendance', err);
+    }
+  };
+
+
   const handleDownloadSessionReport = () => {
     if (!activeSession) return;
 
@@ -383,13 +405,22 @@ export function TeacherDashboard() {
                   <p className='text-sm text-muted-foreground max-w-md'>
                     You can manually mark students as present if they are unable to scan the QR code.
                   </p>
-                  <button
-                    onClick={handleMarkAllPresent}
-                    className='flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-xl text-sm font-medium hover:bg-primary/20 transition-all'
-                  >
-                    <CheckCheck className='h-4 w-4' />
-                    Mark All Present
-                  </button>
+                  <div className='flex gap-2'>
+                    <button
+                      onClick={handleClearAttendance}
+                      className='flex items-center gap-2 px-4 py-2 bg-destructive/10 text-destructive border border-destructive/20 rounded-xl text-sm font-medium hover:bg-destructive/20 transition-all'
+                    >
+                      <XCircle className='h-4 w-4' />
+                      Clear Today's Data
+                    </button>
+                    <button
+                      onClick={handleMarkAllPresent}
+                      className='flex items-center gap-2 px-4 py-2 bg-primary/10 text-primary border border-primary/20 rounded-xl text-sm font-medium hover:bg-primary/20 transition-all'
+                    >
+                      <CheckCheck className='h-4 w-4' />
+                      Mark All Present
+                    </button>
+                  </div>
                 </div>
 
                 <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>

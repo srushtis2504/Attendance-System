@@ -196,6 +196,17 @@ app.post('/api/attendance/mark-all', async (req, res) => {
     res.status(500).json({ success: false, message: err.message });
   }
 });
+// 8. Clear today's attendance for testing purposes
+app.post('/api/attendance/clear-all', async (req, res) => {
+  const { course_id } = req.body;
+  const date = new Date().toISOString().split('T')[0];
+  try {
+    await db.query('DELETE FROM Attendance WHERE course_id = ? AND date = ?', [course_id, date]);
+    res.json({ success: true, message: 'All attendance for today cleared' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
