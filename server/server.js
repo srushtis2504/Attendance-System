@@ -1,0 +1,138 @@
+const express = require('express');
+const cors = require('cors');
+const bodyParser = require('body-parser');
+require('dotenv').config();
+const db = require('./db');
+
+const app = express();
+const PORT = process.env.PORT || 5000;
+
+app.use(cors());
+app.use(bodyParser.json());
+
+// 1. Authentication API
+app.post('/api/register', async (req, res) => {
+  const { role, email, password, name, roll_no } = req.body;
+
+  try {
+    if (role === 'teacher') {
+      const [result] = await db.query(
+        'INSERT INTO Teachers (name, email, password) VALUES (?, ?, ?)',
+        [name, email, password]
+      );
+      return res.json({ success: true, message: 'Teacher registered successfully', userId: result.insertId });
+    } else if (role === 'student') {
+      const [result] = await db.query(
+        'INSERT INTO Students (name, roll_no, email, password) VALUES (?, ?, ?, ?)',
+        [name, roll_no, email, password]
+      );
+      return res.json({ success: true, message: 'Student registered successfully', userId: result.insertId });
+    }
+    res.status(400).json({ success: false, message: 'Invalid role' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.post('/api/login', async (req, res) => {
+  const { role, email, password } = req.body;
+
+  try {
+    if (role === 'teacher') {
+      const [rows] = await db.query('SELECT * FROM Teachers WHERE email = ? AND password = ?', [email, password]);
+      if (rows.length > 0) {
+        return res.json({ success: true, role: 'teacher', user: rows[0] });
+      }
+    } else if (role === 'student') {
+      const [rows] = await db.query('SELECT * FROM Students WHERE email = ? AND password = ?', [email, password]);
+      if (rows.length > 0) {
+        return res.json({ success: true, role: 'student', user: rows[0] });
+      }
+    }
+    res.status(401).json({ success: false, message: 'Invalid credentials' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 2. Mark Attendance API
+app.post('/api/attendance', async (req, res) => {
+  const { student_id, course_id, status } = req.body;
+  const date = new Date().toISOString().split('T')[0];
+
+  try {
+    // Prevent duplicate attendance for same student on same day
+    const [existing] = await db.query(
+      'SELECT * FROM Attendance WHERE student_id = ? AND course_id = ? AND date = ?',
+      [student_id, course_id, date]
+    );
+
+    if (existing.length > 0) {
+      return res.status(400).json({ success: false, message: 'Attendance already marked for today' });
+    }
+
+    await db.query(
+      'INSERT INTO Attendance (student_id, course_id, date, status) VALUES (?, ?, ?, ?)',
+      [student_id, course_id, date, status || 'Present']
+    );
+
+    res.json({ success: true, message: 'Attendance marked successfully' });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 3. Get Attendance for Teacher (per course)
+app.get('/api/attendance/:courseId', async (req, res) => {
+  const { courseId } = req.params;
+  const date = req.query.date || new Date().toISOString().split('T')[0];
+
+  try {
+    const [rows] = await db.query(
+      `SELECT s.name, s.roll_no, a.status, a.date 
+       FROM Attendance a 
+       JOIN Students s ON a.student_id = s.student_id 
+       WHERE a.course_id = ? AND a.date = ?`,
+      [courseId, date]
+    );
+    res.json({ success: true, attendance: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 4. Get Attendance for Student
+app.get('/api/student/:id', async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const [rows] = await db.query(
+      `SELECT c.course_name, a.date, a.status 
+       FROM Attendance a 
+       JOIN Courses c ON a.course_id = c.course_id 
+       WHERE a.student_id = ?`,
+      [id]
+    );
+    res.json({ success: true, attendance: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// 5. Get Courses for a Teacher
+app.get('/api/teacher/:teacherId/courses', async (req, res) => {
+  const { teacherId } = req.params;
+  try {
+    const [rows] = await db.query('SELECT * FROM Courses WHERE teacher_id = ?', [teacherId]);
+    res.json({ success: true, courses: rows });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
+app.get("/", (req, res) => {
+  res.send("Backend is running 🚀");
+});
