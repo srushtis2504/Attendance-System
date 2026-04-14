@@ -61,6 +61,16 @@ app.post('/api/attendance', async (req, res) => {
   const date = new Date().toISOString().split('T')[0];
 
   try {
+    // Check if student is enrolled in the course
+    const [enrollment] = await db.query(
+      'SELECT * FROM Enrollments WHERE student_id = ? AND course_id = ?',
+      [student_id, course_id]
+    );
+
+    if (enrollment.length === 0) {
+      return res.status(403).json({ success: false, message: 'Student is not enrolled in this course' });
+    }
+
     // Prevent duplicate attendance for same student on same day
     const [existing] = await db.query(
       'SELECT * FROM Attendance WHERE student_id = ? AND course_id = ? AND date = ?',
@@ -71,12 +81,26 @@ app.post('/api/attendance', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Attendance already marked for today' });
     }
 
+    // Get student details to return to the teacher/student
+    const [student] = await db.query('SELECT name, roll_no FROM Students WHERE student_id = ?', [student_id]);
+    
+    if (student.length === 0) {
+      return res.status(404).json({ success: false, message: 'Student not found' });
+    }
+
     await db.query(
       'INSERT INTO Attendance (student_id, course_id, date, status) VALUES (?, ?, ?, ?)',
       [student_id, course_id, date, status || 'Present']
     );
 
-    res.json({ success: true, message: 'Attendance marked successfully' });
+    res.json({ 
+      success: true, 
+      message: 'Attendance marked successfully', 
+      student: {
+        name: student[0].name,
+        roll_no: student[0].roll_no
+      }
+    });
   } catch (err) {
     res.status(500).json({ success: false, message: err.message });
   }
